@@ -1,0 +1,147 @@
+---
+title: 'Analyzing Storm data (NOAA) in regards to their negative effects on population health and economy'
+
+output: html_document
+---
+***  
+
+####*Author: Demetris Papadopoulos*
+<br>
+
+####*Date: Tuesday, November 17, 2015*
+***
+
+###Synopsis
+<br>
+The purpose of this report is to study and analyze Storm data, as those were collected by the National Weather Service, with an end goal of investigating the effects of major weather events. Specifically, there are two key questions needing to be answered. The first one concerns how major weather events affect the human population in terms of its health. The second one is related to how major weather events have the greatest economic consequences.
+
+<br>
+  
+###Section 1 - Data Processing
+<br>
+  
+We start by reading the data through the *csv.bz2* file that was provided. 
+<br>
+  
+```{r,cache=TRUE}
+data<-read.csv("Storm/repdata-data-StormData.csv.bz2")
+```
+
+<br>
+We are then interested in examining the frequency of observations collected per year. A possibly unbalanced distribution could indicate that the records provided for some years would not be complete enough to be used for the purposes of this analysis.
+
+```{r}
+library(ggplot2)
+data$year <- as.numeric(format(as.Date(data$BGN_DATE, format = "%m/%d/%Y %H:%M:%S"), "%Y"))
+qplot(data$year,
+      binwidth = 1,  
+      main = "Number of records per year",
+      xlab = "Year",
+      ylab= "Number of records",
+      fill=I("blue"), 
+      col=I("red"), 
+      alpha=I(.2),)
+```
+<br>
+Studying the histogram above we conclude that indeed the small number of records that has been provided for the years 1950-1991 could potentially indicate that the records were not complete and that some weather events and their impact might have not been recorded. Given how we want to keep our analysis objective, a decision is taken to examine only the records from 1992 and onwards.
+<br>
+
+```{r, cache=TRUE}
+data <- data[data$year >= 1995, ]
+```
+<br>
+<br>
+We then examine the fields we will use in our analysis, trying to ensure that the data is clean enough to be able to be efficiently processed for the purpose of our report. We start by the field EVTYPE, which is referring to the major weather event kind of type. 
+
+```{r,}
+str(data$EVTYPE)
+```
+
+As indicated above, there are 985 different types of records of event types, which is very troubling. After studying the official documents in which the Storm Data is formally explained and defined, we determine that there are just 48 types of events.
+After a first rough overlook of the data, it can be observed that there are lots of typo errors which cause the above issue, as well as abbreviations used. In order to deal with this, a new vector of strings will be created, in which just the 48 original types of events as formally documented by the National Weather Service will be included.
+
+```{r,}
+properevtype <- c("ASTRONOMICAL LOW TIDE","AVALANCHE", "BLIZZARD", "COASTAL FLOOD", "COLD CHILL", "DEBRIS FLOW","DENSE FOG", "DENSE SMOKE","DROUGHT","DUST DEVIL", "DUST STORM", "EXCESSIVE HEAT","EXTREME COLD CHILL", "FLASH FLOOD", "FLOOD","FREEZING FOG", "FROST/FREEZE", "FUNNEL CLOUD", "HAIL", "HEAT", "HEAVY RAIN", "HEAVY SNOW", "HIGH SURF", "HIGH WIND", "HURRICANE/TYPHOON","ICE STORM","LAKESHORE FLOOD","LAKE-EFFECT SNOW","LIGHTNING","MARINE HAIL", "MARINE HIGH WIND", "MARINE STRONG WIND", "MARINE THUNDERSTORM WIND","RIP CURRENT","SEICHE","SLEET","STORM TIDE","STRONG WIND","THUNDERSTORM WIND","TORNADO", "TROPICAL DEPRESSION","TROPICAL STORM", "TSUNAMI","VOLCANIC ASH", "WATERSPROUT", "WILDFIRE", "WINTER STORM","WINTER WEATHER")
+```
+
+We then use this vector to compare with the EVTYPE of each of our records and to deal with the typo errors, using the stringdist package. We use the amatch function to compare the strings and find which of the original 48 proper event types each record could be fit at. We use 5 typos as the max possible typo errors we can tolerate. In case there's a difference of more than 5 letters, we will choose a different way to deal with it.
+
+```{r}
+library(stringdist)
+results<-amatch(data$EVTYPE,properevtype,maxDist=5)
+sum(is.na(results))
+```
+
+We can already see how effective the above technique was, given that out of the almost 700000 records, only an amount of approximately 10000 remains with event types which can't be directly associated with the proper 48 types yet. In order to deal with those we firstly examine them.
+
+```{r}
+new <- data.frame( "name" = character(),stringsAsFactors = FALSE)
+for (i in 1:dim(data)[1]){
+if (is.na(results[i])) {new <- rbind( new, data.frame("name"=data$EVTYPE[i]))}}
+new$name<-as.character(new$name)
+new$name<-factor(new$name)
+str(new)
+```
+
+We observe that there are still over 500 different types in those 10600 observations. In order to deal with this effectively, we will try to sort them out.
+
+```{r}
+sort(table(new),decreasing=TRUE)[1:10]
+```
+
+It can be seen that we can fix a great number of those records just by dealing with only limited number of types.
+
+```{r}
+sum(sort(table(new),decreasing=TRUE)[1:25])
+```
+
+Dealing with just 25 of the 550 types, we would be dealing with more than 90% of the remaining records.
+
+```{r}
+sort(table(new),decreasing=TRUE)[1:25]
+```
+
+We then deal with each of the 25 types seperately as following:
+
+```{r}
+data$EVTYPE<- gsub("URBAN/SML STREAM FLD","FLASH FLOOD", data$EVTYPE)
+data$EVTYPE<- gsub("WILD/FOREST FIRE","WILDFIRE", data$EVTYPE)
+data$EVTYPE<- gsub("TSTM WIND/HAIL","THUNDERSTORM WIND", data$EVTYPE)
+data$EVTYPE<- gsub("EXTREME COLD","EXTREME COLD CHILL", data$EVTYPE)
+data$EVTYPE<- gsub("LANDSLIDE","DEBRIS FLOW", data$EVTYPE)
+data$EVTYPE<- gsub("FLOOD/FLASH FLOOD","FLASH FLOOD", data$EVTYPE)
+data$EVTYPE<- gsub("FLOOD/FLASH FLOOD","FLASH FLOOD", data$EVTYPE)
+data$EVTYPE<- gsub("HEAVY SURF/HIGH SURF","HIGH SURF", data$EVTYPE)
+data$EVTYPE<- gsub("DRY MICROBURST","THUNDERSTORM WIND", data$EVTYPE)
+data$EVTYPE<- gsub("HURRICANE","HURRICANE/TYPHOON", data$EVTYPE)
+data$EVTYPE<- gsub("STORM SURGE/TIDE","STORM TIDE", data$EVTYPE)
+data$EVTYPE<- gsub("RECORD WARMTH","EXCESSIVE HEAT", data$EVTYPE)
+data$EVTYPE<- gsub("UNSEASONABLY WARM","EXCESSIVE HEAT", data$EVTYPE)
+data$EVTYPE<- gsub("MODERATE SNOWFALL","HEAVY SNOW", data$EVTYPE)
+data$EVTYPE<- gsub("WINTRY MIX","WINTER WEATHER", data$EVTYPE)
+data$EVTYPE<- gsub("RECORD HEAT","EXCESSIVE HEAT", data$EVTYPE)
+data$EVTYPE<- gsub("THUNDERSTORM WINDS HAIL","THUNDERSTORM WIND", data$EVTYPE)
+data$EVTYPE<- gsub("THUNDERSTORM WINDS HAIL","THUNDERSTORM WIND", data$EVTYPE)
+data$EVTYPE<- gsub("UNSEASONABLY DRY","DROUGHT", data$EVTYPE)
+data$EVTYPE<- gsub("GUSTY WINDS","STRONG WIND", data$EVTYPE)
+data$EVTYPE<- gsub("Temperature record","EXCESSIVE HEAT", data$EVTYPE)
+data$EVTYPE<- gsub("TSTM WIND (G45)","THUNDERSTORM WIND", data$EVTYPE)
+data$EVTYPE<- gsub("Coastal Flooding","COASTAL FLOOD", data$EVTYPE)
+data$EVTYPE<- gsub("RECORD COLD","COLD CHILL", data$EVTYPE)
+data$EVTYPE<- gsub("MONTHLY PRECIPITATION","SLEET", data$EVTYPE)
+data$EVTYPE<- gsub("MIXED PRECIPITATION","SLEET", data$EVTYPE)
+data$EVTYPE<- gsub("SNOW AND ICE","ICE STORM", data$EVTYPE)
+data$EVTYPE<- gsub("EXTREME COLD CHILL/WIND CHILL","COLD CHILL", data$EVTYPE)
+```
+
+Next we repeat the process we did earlier, only this time adding the proper evtype column to our data.
+
+```{r}
+library(stringdist)
+results<-amatch(data$EVTYPE,properevtype,maxDist=5)
+for (i in 1:dim(data)[1]){
+if (is.na(results[i])) {data<- data[-i]}
+  else { data$EVTYPE[i]<-properevtype[results[i]]}
+}
+```
+
